@@ -1,6 +1,18 @@
-cmake_minimum_required(VERSION 3.19)
+cmake_minimum_required(VERSION 3.20)
 
 project(Botcraft)
+
+# 强制使用vcpkg工具链
+set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "Vcpkg toolchain file")
+
+# 禁用Botcraft自带的依赖下载，改用vcpkg
+set(BOTCRAFT_DOWNLOAD_DEPENDENCIES OFF CACHE BOOL "Disable auto-download dependencies")
+
+# 查找vcpkg依赖
+find_package(ZLIB REQUIRED)
+find_package(OpenSSL REQUIRED)
+find_package(nlohmann_json REQUIRED)
+find_path(ASIO_INCLUDE_DIR asio.hpp)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # Export DLL symbols on Windows
