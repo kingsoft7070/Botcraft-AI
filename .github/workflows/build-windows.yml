@@ -1,49 +1,66 @@
 name: Build Botcraft (Windows)
 
-# 触发条件：推代码到main分支、创建PR时自动编译
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
 
+env:
+  VERSION: 1.20.1
+  BUILD_TYPE: Release
+  CMAKE_GENERATOR: Visual Studio 17 2022
+  VCPKG_ROOT: C:/vcpkg
+
 jobs:
   build:
-    runs-on: windows-2022  # 使用GitHub的Windows 2022虚拟机
-
+    runs-on: windows-2022
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        submodules: recursive  # 拉取子模块
+        submodules: recursive
 
     - name: Set up vcpkg
       uses: lukka/run-vcpkg@v11
       with:
-        vcpkgDirectory: ${{ github.workspace }}/vcpkg
-        vcpkgArguments: asio:x64-windows nlohmann-json:x64-windows openssl:x64-windows zlib:x64-windows
+        vcpkgDirectory: ${{ env.VCPKG_ROOT }}
+        vcpkgArguments: zlib:x64-windows openssl:x64-windows glfw3:x64-windows glad:x64-windows asio:x64-windows nlohmann-json:x64-windows
         vcpkgTriplet: x64-windows
-        vcpkgGitCommitId: 2024.04.12  # 固定vcpkg版本，避免兼容问题
 
-    - name: Configure CMake
-      uses: lukka/run-cmake@v10
-      with:
-        cmakeListsTxtPath: ${{ github.workspace }}/CMakeLists.txt
-        buildDirectory: ${{ github.workspace }}/build
-        cmakeAppendedArgs: >
-          -G "Visual Studio 17 2022"
-          -A x64
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
-          -DBOTCRAFT_BUILD_EXAMPLES=ON
-          -DBOTCRAFT_USE_OPENGL_GUI=OFF
-          -DBOTCRAFT_DOWNLOAD_DEPENDENCIES=OFF
+    - name: Pre_configure
+      shell: cmd
+      run: |
+        cmake -G "%CMAKE_GENERATOR%" ^
+          -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ^
+          -DBOTCRAFT_GAME_VERSION="%VERSION%" ^
+          -DBOTCRAFT_USE_OPENGL_GUI=ON ^
+          -DBOTCRAFT_USE_IMGUI=ON ^
+          -DBOTCRAFT_COMPRESSION=ON ^
+          -DBOTCRAFT_ENCRYPTION=ON ^
+          -DBOTCRAFT_BUILD_EXAMPLES=ON ^
+          -DBOTCRAFT_BUILD_TESTS=OFF ^
+          -DBOTCRAFT_BUILD_TESTS_ONLINE=OFF ^
+          -DBOTCRAFT_WINDOWS_BETTER_SLEEP=ON ^
+          -DBOTCRAFT_FORCE_LOCAL_ZLIB=OFF ^
+          -DBOTCRAFT_FORCE_LOCAL_OPENSSL=OFF ^
+          -DBOTCRAFT_FORCE_LOCAL_GLFW=OFF ^
+          -DBOTCRAFT_FORCE_LOCAL_GLAD=OFF ^
+          -DBOTCRAFT_FORCE_LOCAL_CATCH=OFF ^
+          -DBOTCRAFT_INSTALL_MC_ASSETS=OFF ^
+          -DBOTCRAFT_USE_PRECOMPILED_HEADERS=ON ^
+          -DBOTCRAFT_BUILD_DOC=OFF ^
+          -DBOTCRAFT_OUTPUT_DIR=output ^
+          -DCMAKE_INSTALL_PREFIX=install/botcraft ^
+          -DCMAKE_TOOLCHAIN_FILE="%VCPKG_ROOT%/scripts/buildsystems/vcpkg.cmake" ^
+          -S %GITHUB_WORKSPACE% ^
+          -B .
 
     - name: Build
-      working-directory: ${{ github.workspace }}/build
-      run: msbuild Botcraft.sln /p:Configuration=Release /m:4
+      run: cmake --build . --config ${{ env.BUILD_TYPE }} --parallel 4
 
-    - name: Upload compiled executable
+    - name: Upload executable
       uses: actions/upload-artifact@v4
       with:
         name: ChatCommandExample-Windows
-        path: ${{ github.workspace }}/build/examples/2_ChatCommandExample/Release/2_ChatCommandExample.exe
+        path: ${{ github.workspace }}/output/Release/2_ChatCommandExample.exe
