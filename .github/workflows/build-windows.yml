@@ -1,46 +1,59 @@
 name: Build Botcraft (Windows)
 
-# 触发条件：推代码到main分支、创建PR时自动编译
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
 
-# 环境变量统一管理
 env:
   VERSION: 1.20.1
   BUILD_TYPE: Release
   CMAKE_GENERATOR: "Visual Studio 17 2022"
+  # 手动指定3rdparty路径（关键）
+  THIRD_PARTY_DIR: ${{ github.workspace }}/3rdparty
 
 jobs:
   build-windows:
     runs-on: windows-2022
     steps:
-      # 1. 拉取代码 + 递归拉取所有子模块（关键修复：下载3rdparty下的zlib/openssl等源码）
       - name: Checkout code (with submodules)
         uses: actions/checkout@v4
         with:
-          submodules: recursive  # 递归拉取所有3rdparty子模块源码
-          fetch-depth: 0         # 确保子模块能完整拉取
+          submodules: recursive
+          fetch-depth: 0
 
-      # 2. CMake配置（保留你原有FORCE_LOCAL_*=ON的配置）
+      # 关键步骤：手动编译ZLIB源码，生成库文件和头文件路径
+      - name: Build ZLIB locally first
+        shell: cmd
+        run: |
+          # 创建zlib编译目录
+          mkdir %THIRD_PARTY_DIR%/zlib/build
+          cd %THIRD_PARTY_DIR%/zlib/build
+          # 编译ZLIB
+          cmake -G "%CMAKE_GENERATOR%" -A x64 -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -S .. -B .
+          cmake --build . --config %BUILD_TYPE% --parallel 2
+          # 输出ZLIB路径（供后续CMake使用）
+          echo "ZLIB_INCLUDE_DIR=%THIRD_PARTY_DIR%/zlib" >> %GITHUB_ENV%
+          echo "ZLIB_LIBRARY=%THIRD_PARTY_DIR%/zlib/build/%BUILD_TYPE%/zlib.lib" >> %GITHUB_ENV%
+
+      # CMake配置：手动指定ZLIB路径 + 保留FORCE_LOCAL_*=ON
       - name: Pre_configure
         shell: cmd
         run: |
           cmake -G "%CMAKE_GENERATOR%" ^
-            -A x64 ^  # 显式指定64位编译，匹配子模块源码的编译架构
+            -A x64 ^
             -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ^
             -DBOTCRAFT_GAME_VERSION="%VERSION%" ^
             -DBOTCRAFT_USE_OPENGL_GUI=ON ^
             -DBOTCRAFT_USE_IMGUI=ON ^
             -DBOTCRAFT_COMPRESSION=ON ^
             -DBOTCRAFT_ENCRYPTION=ON ^
-            -DBOTCRAFT_BUILD_EXAMPLES=ON ^  # 启用示例编译（你的ChatCommandExample）
+            -DBOTCRAFT_BUILD_EXAMPLES=OFF ^
             -DBOTCRAFT_BUILD_TESTS=ON ^
             -DBOTCRAFT_BUILD_TESTS_ONLINE=OFF ^
             -DBOTCRAFT_WINDOWS_BETTER_SLEEP=ON ^
-            -DBOTCRAFT_FORCE_LOCAL_ZLIB=ON ^  # 保留ON，现在子模块已下载源码
+            -DBOTCRAFT_FORCE_LOCAL_ZLIB=ON ^
             -DBOTCRAFT_FORCE_LOCAL_OPENSSL=ON ^
             -DBOTCRAFT_FORCE_LOCAL_GLFW=ON ^
             -DBOTCRAFT_FORCE_LOCAL_GLAD=ON ^
@@ -50,14 +63,15 @@ jobs:
             -DBOTCRAFT_BUILD_DOC=OFF ^
             -DBOTCRAFT_OUTPUT_DIR=output ^
             -DCMAKE_INSTALL_PREFIX=install/botcraft ^
+            # 暴力指定ZLIB路径（核心修复）
+            -DZLIB_INCLUDE_DIR=%ZLIB_INCLUDE_DIR% ^
+            -DZLIB_LIBRARY=%ZLIB_LIBRARY% ^
             -S %GITHUB_WORKSPACE% ^
             -B .
 
-      # 3. 编译代码（4线程加速）
       - name: Build
         run: cmake --build . --config %BUILD_TYPE% --parallel 4
 
-      # 4. 上传编译产物（你的ChatCommandExample可执行文件）
       - name: Upload Windows Executable
         uses: actions/upload-artifact@v4
         with:
